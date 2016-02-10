@@ -2,8 +2,12 @@ machine:
   timezone: UTC
   java:
     version: oraclejdk8
+  services:
+    - docker
 
 dependencies:
+  pre:
+    - pip install -U awscli
   # Cache the resolution-cache and build streams to speed things up
   cache_directories:
     - "~/.sbt"
@@ -22,5 +26,5 @@ test:
   post:
     - mkdir -p $CIRCLE_TEST_REPORTS/junit/
     - find . -type f -regex ".*/target/test-reports/.*xml" -exec cp {} $CIRCLE_TEST_REPORTS/junit/ \;
-    - $(aws ecr get-login --region us-east-1)
+    - aws --version && $(aws ecr get-login --region us-east-1)
     - sbt docker:publish
