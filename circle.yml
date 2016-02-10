@@ -6,11 +6,9 @@ machine:
     - docker
   post:
     - sudo pip install --upgrade awscli
-    - eval `aws ecr get-login`
+    - eval `aws ecr get-login --region us-east-1`
 
 dependencies:
-  pre:
-    - pip install -U awscli
   # Cache the resolution-cache and build streams to speed things up
   cache_directories:
     - "~/.sbt"
