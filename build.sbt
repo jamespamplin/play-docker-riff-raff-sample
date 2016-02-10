@@ -21,6 +21,9 @@ dockerExposedPorts := Seq(9000)
 
 defaultLinuxInstallLocation in Docker := "/opt/app"
 
+dockerRepository := Some("702972749545.dkr.ecr.us-east-1.amazonaws.com")
+
+
 dockerCommands := Seq(
   Cmd("FROM", "alpine:3.3"),
   Cmd("MAINTAINER", maintainer.value),
