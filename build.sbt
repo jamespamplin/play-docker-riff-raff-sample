@@ -25,6 +25,8 @@ defaultLinuxInstallLocation in Docker := "/opt/app"
 
 dockerRepository := Some("702972749545.dkr.ecr.us-east-1.amazonaws.com")
 
+version in Docker := buildNumber
+
 dockerCommands := Seq(
   Cmd("FROM", "alpine:3.3"),
   Cmd("MAINTAINER", maintainer.value),
@@ -40,7 +42,7 @@ dockerCommands := Seq(
 buildInfoKeys := Seq[BuildInfoKey](
   name,
   BuildInfoKey.constant("gitCommitId", gitCommitId),
-  BuildInfoKey.constant("buildNumber", sys.env.getOrElse("CIRCLE_BUILD_NUM", "DEV"))
+  BuildInfoKey.constant("buildNumber", buildNumber)
 )
 
 buildInfoOptions += BuildInfoOption.ToMap
@@ -52,3 +54,6 @@ def gitCommitId = {
     .orElse(Try("git rev-parse HEAD".!!.trim).toOption)
     .getOrElse("unknown")
 }
+
+def buildNumber =
+  sys.env.getOrElse("CIRCLE_BUILD_NUM", "DEV")
