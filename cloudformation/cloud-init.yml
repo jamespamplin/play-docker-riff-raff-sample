@@ -1,0 +1,30 @@
+#cloud-config
+
+# sample cloud-config for cloudinit in cloudformation userdata
+
+coreos:
+  units:
+    - name: "docker-ecs-login.service"
+      content: |
+        [Unit]
+        Description=App docker container
+        After=docker.service
+        Requires=docker.service
+
+        [Service]
+        Type=oneshot
+        ExecStart=/bin/sh -c 'eval `/usr/bin/docker run --rm anigeo/awscli ecr get-login --region us-east-1`'
+    - name: "app.service"
+      command: "start"
+      content: |
+        [Unit]
+        Description=App docker container
+        After=docker.service docker-ecs-login.service
+        Requires=docker.service docker-ecs-login.service
+
+        [Service]
+        Environment=APP_IMAGE='702972749545.dkr.ecr.us-east-1.amazonaws.com/play-docker-riff-raff-sample:12' APP_PORT_MAPPING='9000:9000'
+        TimeoutStartSec=0
+        Restart=on-failure
+        ExecStartPre=-/usr/bin/docker rm -f app
+        ExecStart=/usr/bin/docker run -p $APP_PORT_MAPPING --name app $APP_IMAGE

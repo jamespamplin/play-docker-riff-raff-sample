@@ -1,0 +1,315 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "play-docker-riff-raff-sample",
+  "Parameters": {
+    "KeyName": {
+      "Description": "The EC2 Key Pair to allow SSH access to the instances",
+      "Type": "AWS::EC2::KeyPair::KeyName",
+      "Default": "test-jamespamplin"
+    },
+    "Stage": {
+      "Description": "Environment name",
+      "Type": "String",
+      "AllowedValues": [ "CODE", "PROD" ]
+    },
+    "VpcId": {
+      "Description": "ID of the VPC onto which to launch the application",
+      "Type": "AWS::EC2::VPC::Id",
+      "Default": "vpc-bf4ea5da"
+    },
+    "PublicVpcSubnets" : {
+      "Description": "Public subnets to use for the ELB",
+      "Type": "List<AWS::EC2::Subnet::Id>",
+      "Default": "subnet-09ae616c,subnet-0e48a379,subnet-15a3aa53"
+    },
+    "AmiId": {
+      "Description": "Custom AMI to use for instances",
+      "Type": "String",
+      "Default": "ami-1461d767"
+    },
+    "Stack": {
+      "Description": "Application stack",
+      "Type": "String",
+      "Default": "playground"
+    },
+    "App": {
+      "Description": "Application name",
+      "Type": "String",
+      "Default": "play-docker-riff-raff-sample"
+    },
+    "AppVersion": {
+      "Description": "Currently deployed application version (updated from riff-raff)",
+      "Type": "String",
+      "Default": "0"
+    },
+    "DockerRepository": {
+      "Type": "String",
+      "Default": "702972749545.dkr.ecr.us-east-1.amazonaws.com"
+    }
+  },
+
+  "Mappings": {
+    "DockerEnvironment": {
+      "PROD": {
+        "PortMapping": "9000:9000"
+      }
+    }
+  },
+
+  "Resources": {
+    "PlaygroundRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [ {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": [ "ec2.amazonaws.com" ]
+            },
+            "Action": [ "sts:AssumeRole" ]
+          } ]
+        },
+        "Path": "/",
+        "Policies": [ {
+          "PolicyName": "root",
+
+          "PolicyDocument": {
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": "s3:GetObject",
+                "Resource": "arn:aws:s3:::gu-playground-*/*"
+              },
+              {
+                "Effect": "Allow",
+                "Action": "ec2:DescribeTags",
+                "Resource": "*"
+              }
+            ]
+          }
+        } ]
+      }
+    },
+
+    "InstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Path": "/",
+        "Roles": [ {"Ref": "PlaygroundRole"} ]
+      }
+    },
+
+    "LoadBalancer": {
+      "Type": "AWS::ElasticLoadBalancing::LoadBalancer",
+      "Properties": {
+        "LoadBalancerName": {"Fn::Join": ["-", ["PlayDockerSample", {"Ref":"Stage"}]]},
+        "Scheme": "internet-facing",
+        "Listeners": [{
+          "LoadBalancerPort": "80",
+          "InstancePort": "9000",
+          "Protocol": "HTTP"
+        }],
+        "CrossZone": "true",
+        "HealthCheck": {
+          "Target": "HTTP:9000/management/healthcheck",
+          "HealthyThreshold": "2",
+          "UnhealthyThreshold": "10",
+          "Interval": "30",
+          "Timeout": "10"
+        },
+        "Subnets": { "Ref": "PublicVpcSubnets" },
+        "SecurityGroups": [
+          { "Ref": "LoadBalancerSecurityGroup" }
+        ]
+      }
+    },
+
+    "AutoscalingGroup": {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties": {
+        "AvailabilityZones": { "Fn::GetAZs": "" },
+        "LaunchConfigurationName": { "Ref": "LaunchConfig" },
+        "MinSize": "1",
+        "MaxSize": "1",
+        "DesiredCapacity": "1",
+        "HealthCheckType": "ELB",
+        "HealthCheckGracePeriod": 400,
+        "LoadBalancerNames": [ {"Ref": "LoadBalancer"} ],
+        "Tags": [
+          {
+            "Key": "Stage",
+            "Value": { "Ref": "Stage" },
+            "PropagateAtLaunch": "true"
+          },
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Join": [":", [{"Ref":"Stage"}, {"Ref":"App"}]]
+            },
+            "PropagateAtLaunch": "true"
+          },
+          {
+            "Key": "Stack",
+            "Value": {"Ref": "Stack"},
+            "PropagateAtLaunch": "true"
+          },
+          {
+            "Key": "App",
+            "Value": {"Ref": "App"},
+            "PropagateAtLaunch": "true"
+          },
+          {
+            "Key": "AppVersion",
+            "Value": {"Ref": "AppVersion"},
+            "PropagateAtLaunch": "true"
+          },
+          {
+            "Key": "Role",
+            "Value": "playground",
+            "PropagateAtLaunch": "true"
+          }
+        ],
+        "VPCZoneIdentifier": {
+          "Ref": "PublicVpcSubnets"
+        }
+      }
+    },
+
+    "LaunchConfig": {
+      "Type": "AWS::AutoScaling::LaunchConfiguration",
+      "Properties": {
+        "KeyName": {"Ref": "KeyName"},
+        "ImageId": {"Ref": "AmiId"},
+        "SecurityGroups": [
+          {"Ref": "InstanceSecurityGroup"}
+        ],
+        "InstanceType": "t2.micro",
+        "AssociatePublicIpAddress": "True",
+        "IamInstanceProfile": {"Ref": "InstanceProfile"},
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": ["\n", [
+              "#cloud-config",
+              "coreos:",
+              "  units:",
+              "    - name: \"docker-ecs-login.service\"",
+              "      content: |",
+              "        [Unit]",
+              "        Description=App docker container",
+              "        After=docker.service",
+              "        Requires=docker.service",
+              "        [Service]",
+              "        Type=oneshot",
+              "        ExecStart=/bin/sh -c 'eval `/usr/bin/docker run --rm anigeo/awscli ecr get-login --region us-east-1`'",
+              "    - name: \"app.service\"",
+              "      command: \"start\"",
+              "      content: |",
+              "        [Unit]",
+              "        Description=App docker container",
+              "        After=docker.service docker-ecs-login.service",
+              "        Requires=docker.service docker-ecs-login.service",
+              "        [Service]",
+              {
+                "Fn::Join": [ "", [
+                  "        Environment=APP_IMAGE='",
+                  { "Ref": "DockerRepository" }, "/", { "Ref": "App" }, ":", { "Ref": "AppVersion" },
+                  "' APP_PORT_MAPPING='",
+                  {
+                    "Fn::FindInMap": [
+                      "DockerEnvironment",
+                      {
+                        "Ref": "Stage"
+                      },
+                      "PortMapping"
+                    ]
+                  },
+                  "'"
+                ]]
+              },
+              "        TimeoutStartSec=0",
+              "        Restart=on-failure",
+              "        ExecStartPre=-/usr/bin/docker rm -f app",
+              "        ExecStart=/usr/bin/docker run -p $APP_PORT_MAPPING --name app $APP_IMAGE"
+            ]]
+          }
+        }
+      }
+    },
+
+    "LoadBalancerSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "VpcId": { "Ref": "VpcId" },
+        "GroupDescription": "Open up HTTP access to load balancer",
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "80",
+            "ToPort": "80",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "9000",
+            "ToPort": "9000",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Join": [
+                "-",
+                [ { "Ref": "App"}, { "Ref": "Stage"}, "loadbalancer-sg" ]
+              ]
+            }
+          }
+        ]
+      }
+    },
+
+    "InstanceSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "VpcId": { "Ref": "VpcId" },
+        "GroupDescription": "Open up HTTP access to load balancer",
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "9000",
+            "ToPort": "9000",
+            "SourceSecurityGroupId": {
+              "Ref": "LoadBalancerSecurityGroup"
+            }
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "22",
+            "ToPort": "22",
+            "CidrIp": "77.91.248.0/21"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Join": [
+                "-",
+                [ { "Ref": "App" }, { "Ref": "Stage"}, "instance-sg" ]
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+
+  "Outputs": {
+    "LoadBalancer": {
+      "Value": { "Fn::GetAtt": ["LoadBalancer", "DNSName"] }
+    }
+  }
+}
