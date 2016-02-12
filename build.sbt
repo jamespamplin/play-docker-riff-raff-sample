@@ -9,7 +9,7 @@ maintainer := "James Pamplin <james.pamplin@guardian.co.uk>"
 version := "1.0-SNAPSHOT"
 
 lazy val root = (project in file("."))
-  .enablePlugins(PlayScala, SbtNativePackager, DockerPlugin, BuildInfoPlugin)
+  .enablePlugins(PlayScala, SbtNativePackager, DockerPlugin, RiffRaffArtifact, BuildInfoPlugin)
 
 scalaVersion := "2.11.7"
 
@@ -37,6 +37,18 @@ dockerCommands := Seq(
   ExecCmd("ENTRYPOINT", dockerEntrypoint.value: _*)
 )
 
+// Riff-raff build upload
+riffRaffPackageType := (packageZipTarball in Universal).value
+riffRaffPackageName := name.value
+riffRaffManifestProjectName := s"playground:${name.value}"
+riffRaffBuildIdentifier := Option(System.getenv("CIRCLE_BUILD_NUM")).getOrElse("0")
+riffRaffUploadArtifactBucket := Option("playground-riffraff-artifact")
+riffRaffUploadManifestBucket := Option("playground-riffraff-builds")
+
+riffRaffArtifactResources ++= Seq(
+  baseDirectory.value / "cloudformation" / "cloudformation.template" ->
+    "packages/cloudformation/cloudformation.template"
+)
 
 // Build info
 buildInfoKeys := Seq[BuildInfoKey](
