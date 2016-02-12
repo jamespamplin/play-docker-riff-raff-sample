@@ -1,0 +1,31 @@
+{
+  "defaultStacks" : ["playground"],
+  "packages" : {
+    "cloudformation" : {
+      "type": "cloud-formation",
+      "fileName": "cloudformation",
+      "data": {
+        "templatePath": "cloudformation.template",
+        "cloudFormationStackName": "PlayDockerSample",
+        "prependStackToCloudFormationStackName": false
+      }
+    },
+    "play-docker-riff-raff-sample": {
+      "type": "autoscaling"
+    }
+  },
+  "recipes" : {
+    "default" : {
+      "depends" : [
+        "cloudformation",
+        "deploy"
+      ]
+    },
+    "deploy": {
+      "actionsBeforeApp": [ "play-docker-riff-raff-sample.deploy" ]
+    },
+    "cloudformation": {
+      "actions": ["cloudformation.updateStack"]
+    }
+  }
+}
