@@ -13,4 +13,8 @@ class Application extends Controller {
     Ok(views.html.index(buildInfo))
   }
 
+  def healthcheck = Action {
+    Ok("Healthy")
+  }
+
 }
